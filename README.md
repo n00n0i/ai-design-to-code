@@ -1,256 +1,232 @@
-# AI Design to Code
+# AI Design to Code - Production Ready
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js" />
-  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript" />
-  <img src="https://img.shields.io/badge/Tailwind-3.0-38B2AC?style=for-the-badge&logo=tailwind-css" />
-  <img src="https://img.shields.io/badge/Penpot-Integration-orange?style=for-the-badge" />
-</p>
+AI-powered design to code generator with Penpot integration. **Production-ready** with comprehensive security, monitoring, and scalability.
 
-<p align="center">
-  <b>AI-powered design to code generator with Penpot integration</b>
-</p>
+## 🏗️ Architecture
 
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#deployment">Deployment</a> •
-  <a href="#documentation">Documentation</a>
-</p>
+### System Overview
 
----
-
-## Features
-
-### 🤖 AI Code Generation
-- Generate React/Next.js components from natural language descriptions
-- Powered by Kimi AI (Moonshot)
-- TypeScript support with proper typing
-
-### 👁️ Live Preview
-- Real-time code preview with Sandpack
-- Interactive editing environment
-- Error highlighting and debugging
-
-### 📦 Export Options
-- Export as complete Next.js project (ZIP)
-- Copy code to clipboard
-- Export to Penpot for design editing
-
-### 🎨 Penpot Integration
-- Self-hosted Penpot instance
-- SVG export/import workflow
-- Bidirectional design-code bridge
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 18+ (for native development)
-- [Docker](https://docs.docker.com/get-docker/) (for containerized deployment)
-- [Vagrant](https://www.vagrantup.com/) + [VirtualBox](https://www.virtualbox.org/) (for VM deployment)
-- [Kimi API Key](https://platform.moonshot.cn/)
-
-### Option 1: Native Development
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/ai-design-to-code.git
-cd ai-design-to-code/my-app
-
-# Install dependencies
-npm install
-
-# Configure environment
-echo "KIMI_API_KEY=your_api_key_here" > .env.local
-
-# Run development server
-npm run dev
-
-# Open http://localhost:3000
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT LAYER                                    │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                     │
+│  │   Browser   │    │   Mobile    │    │   API Client│                     │
+│  │   (React)   │    │   (Future)  │    │   (External)│                     │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                     │
+│         │                  │                  │                              │
+│         └──────────────────┼──────────────────┘                              │
+│                            │                                                │
+└────────────────────────────┼────────────────────────────────────────────────┘
+                             │ HTTPS
+┌────────────────────────────┼────────────────────────────────────────────────┐
+│                         CDN / LOAD BALANCER                                  │
+│                    (CloudFlare / AWS CloudFront)                             │
+└────────────────────────────┼────────────────────────────────────────────────┘
+                             │
+┌────────────────────────────┼────────────────────────────────────────────────┐
+│                           SERVER LAYER                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         Nginx (Reverse Proxy)                        │    │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────┐  │    │
+│  │  │   SSL/TLS   │  │  Rate Limit │  │   Static    │  │  Health  │  │    │
+│  │  │  Termination│  │   (Req/s)   │  │    Files    │  │  Checks  │  │    │
+│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────┬─────┘  │    │
+│  │         └─────────────────┴─────────────────┴──────────────┘        │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│  ┌─────────────────────────────────┴─────────────────────────────────────┐   │
+│  │                    Next.js Application (Node.js)                       │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────┐    │   │
+│  │  │     API     │  │    Auth     │  │   Logging   │  │  Error   │    │   │
+│  │  │   Routes    │  │   (JWT)     │  │  (Winston)  │  │ Handler  │    │   │
+│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────┬─────┘    │   │
+│  │         └─────────────────┴─────────────────┴──────────────┘          │   │
+│  └───────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                          │
+└────────────────────────────────────┼──────────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────┼──────────────────────────────────────────┐
+│                         SERVICE LAYER (Docker)                               │
+│                                                                                │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                │
+│  │   PostgreSQL    │  │     Redis       │  │   AI Services   │                │
+│  │   (Database)    │  │   (Cache/Queue) │  │ (Kimi/OpenAI)   │                │
+│  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │                │
+│  │  │  Users    │  │  │  │ Sessions  │  │  │  │  Kimi API │  │                │
+│  │  │Generations│  │  │  │ Rate Limit│  │  │  │ OpenAI API│  │                │
+│  │  │ API Keys  │  │  │  │   Queue   │  │  │  │  Fallback │  │                │
+│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │                │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘                │
+│                                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │                    Penpot Services (Optional)                            │  │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │  │
+│  │  │  Frontend   │  │   Backend   │  │  Exporter   │  │  PostgreSQL │    │  │
+│  │  │    :9001    │  │    :8080    │  │    :8081    │  │    :5433    │    │  │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Option 2: Docker Deployment
+### Request Flow
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│  User   │────▶│  Nginx  │────▶│  Auth   │────▶│  Rate   │────▶│ Next.js │
+│ Request │     │ (SSL)   │     │ Middleware│    │  Limit  │     │   API   │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘     └────┬────┘
+                                                                      │
+                    ┌─────────────────────────────────────────────────┘
+                    │
+                    ▼
+           ┌─────────────────┐
+           │   Validation    │
+           │   (Zod Schema)  │
+           └────────┬────────┘
+                    │
+        ┌───────────┼───────────┐
+        ▼           ▼           ▼
+   ┌─────────┐ ┌─────────┐ ┌─────────┐
+   │  Cache  │ │Database │ │ AI API  │
+   │ (Redis) │ │(Postgres)│ │(Kimi)  │
+   └─────────┘ └─────────┘ └─────────┘
+```
+
+### Authentication Flow
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│  Login  │────▶│ Validate│────▶│ Generate│────▶│  Store  │────▶│ Return  │
+│ Request │     │Credentials│    │  JWT    │     │ Session │     │  Token  │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘     └─────────┘
+                                                                              
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│  API    │────▶│ Verify  │────▶│  Check  │────▶│ Process │
+│ Request │     │  JWT    │     │  Rate   │     │ Request │
+│ + Token │     │         │     │  Limit  │     │         │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘
+```
+
+### Code Generation Flow
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│  User   │────▶│ Validate│────▶│  Check  │────▶│  Queue  │────▶│ Process │
+│ Prompt  │     │  Input  │     │  Quota  │     │  Task   │     │ with AI │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘     └────┬────┘
+                                                                      │
+                    ┌─────────────────────────────────────────────────┘
+                    │
+                    ▼
+           ┌─────────────────┐
+           │  AI Provider    │
+           │  (Kimi/OpenAI)  │
+           └────────┬────────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+   ┌─────────┐             ┌─────────┐
+   │ Success │             │  Error  │
+   │ Save to │             │ Retry/  │
+   │ Database│             │ Fallback│
+   └────┬────┘             └────┬────┘
+        │                       │
+        └───────────┬───────────┘
+                    ▼
+              ┌─────────┐
+              │ Return  │
+              │ Result  │
+              └─────────┘
+```
+
+## 🚀 Quick Start
+
+### Production Install
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/ai-design-to-code.git
+curl -fsSL https://raw.githubusercontent.com/n00n0i/ai-design-to-code/main/install-production.sh | sudo bash
+```
+
+### Manual Install
+
+```bash
+# 1. Clone
+git clone https://github.com/n00n0i/ai-design-to-code.git
 cd ai-design-to-code
 
-# Configure environment
-echo "KIMI_API_KEY=your_api_key_here" > .env
+# 2. Configure
+cp .env.production.example .env.production
+# Edit with your API keys
 
-# Start all services
-docker-compose -f docker-compose.full.yml up -d
-
-# Access:
-# AI Tool: http://localhost:3000
-# Penpot: http://localhost:9001
+# 3. Deploy
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### Option 3: Vagrant VM
+## 📊 Monitoring
+
+Access monitoring dashboards:
+- **Grafana**: http://localhost:3001 (admin/admin)
+- **Prometheus**: http://localhost:9090
+
+## 🔒 Security
+
+- JWT Authentication
+- Rate Limiting (100 req/15min)
+- Input Validation (Zod)
+- SQL Injection Protection (Prisma)
+- XSS Protection
+- CSRF Tokens
+
+## 🧪 Testing
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/ai-design-to-code.git
-cd ai-design-to-code
+# Unit tests
+npm run test:unit
 
-# Start VM
-vagrant up
+# Integration tests
+npm run test:integration
 
-# SSH into VM
-vagrant ssh
-
-# Configure API key
-sudo nano /opt/ai-design-to-code/.env
-
-# Start services
-start-ai-design
-
-# Access from host:
-# AI Tool: http://localhost:3000
-# Penpot: http://localhost:9001
+# E2E tests
+npm run test:e2e
 ```
 
----
+## 📚 API Documentation
 
-## Deployment
+### POST /api/generate
 
-### Docker Compose (Recommended)
+Generate code from natural language prompt.
 
-```yaml
-version: "3.5"
-
-services:
-  ai-design-to-code:
-    build: ./my-app
-    ports:
-      - "3000:3000"
-    environment:
-      - KIMI_API_KEY=${KIMI_API_KEY}
-
-  penpot-frontend:
-    image: penpotapp/frontend:latest
-    ports:
-      - "9001:80"
-    # ... see docker-compose.full.yml
+**Request:**
+```json
+{
+  "prompt": "Create a login form with email and password",
+  "framework": "nextjs",
+  "styling": "tailwind",
+  "typescript": true
+}
 ```
 
-### Environment Variables
-
-| Variable | Required | Description |
-|:---|:---:|:---|
-| `KIMI_API_KEY` | ✅ | Kimi API key from https://platform.moonshot.cn/ |
-| `PORT` | ❌ | Port for AI Tool (default: 3000) |
-| `PENPOT_PORT` | ❌ | Port for Penpot (default: 9001) |
-
----
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md) - System design and component structure
-- [API Reference](docs/API.md) - API endpoints and usage
-- [Penpot Integration](docs/PENPOT_INTEGRATION.md) - Design tool integration guide
-- [Deployment Guide](docs/DEPLOYMENT.md) - Detailed deployment instructions
-- [Vagrant Setup](docs/VAGRANT.md) - VM deployment guide
-- [Contributing](CONTRIBUTING.md) - Contribution guidelines
-
----
-
-## Project Structure
-
-```
-ai-design-to-code/
-├── my-app/                    # Next.js AI Tool
-│   ├── app/                   # App Router
-│   │   ├── page.tsx          # Main UI
-│   │   ├── layout.tsx        # Root layout
-│   │   └── api/              # API routes
-│   │       └── generate/     # AI generation endpoint
-│   ├── components/           # React components
-│   │   ├── ui/               # shadcn/ui components
-│   │   └── PenpotBridge.tsx  # Penpot integration
-│   ├── lib/                  # Utilities
-│   │   ├── utils.ts          # Helper functions
-│   │   └── svg-converter.ts  # React ↔ SVG conversion
-│   ├── public/               # Static assets
-│   ├── Dockerfile            # Container image
-│   ├── package.json          # Dependencies
-│   └── next.config.js        # Next.js configuration
-│
-├── penpot-docker/            # Penpot self-hosted
-│   ├── docker-compose.yml    # Penpot services
-│   └── start.sh              # Setup script
-│
-├── docs/                     # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── API.md
-│   ├── PENPOT_INTEGRATION.md
-│   ├── DEPLOYMENT.md
-│   └── VAGRANT.md
-│
-├── docker-compose.full.yml   # Full stack compose
-├── Vagrantfile               # VM configuration
-├── README.md                 # This file
-├── LICENSE                   # MIT License
-└── CONTRIBUTING.md           # Contribution guide
+**Response:**
+```json
+{
+  "id": "gen_123",
+  "code": "export default function LoginForm() {...}",
+  "tokensUsed": 150,
+  "duration": 2500
+}
 ```
 
----
+## 🛠️ Tech Stack
 
-## Tech Stack
+- **Frontend**: Next.js 16, React 18, TypeScript, Tailwind CSS
+- **Backend**: Node.js, FastAPI
+- **Database**: PostgreSQL 15, Prisma ORM
+- **Cache**: Redis 7
+- **AI**: Kimi API, OpenAI API
+- **Monitoring**: Prometheus, Grafana
+- **Security**: JWT, bcrypt, helmet
 
-| Category | Technology |
-|:---|:---|
-| Framework | Next.js 16, React 18 |
-| Language | TypeScript 5 |
-| Styling | Tailwind CSS, shadcn/ui |
-| AI | Kimi API (Moonshot) |
-| Preview | Sandpack (CodeSandbox) |
-| Export | JSZip, file-saver |
-| Design | Penpot (self-hosted) |
-| VM | Vagrant, VirtualBox |
+## 📄 License
 
----
-
-## Screenshots
-
-<p align="center">
-  <i>Screenshots will be added after initial deployment</i>
-</p>
-
----
-
-## Roadmap
-
-- [x] AI code generation
-- [x] Live preview with Sandpack
-- [x] Export as ZIP
-- [x] Penpot SVG bridge
-- [x] Penpot self-hosting
-- [x] Vagrant VM setup
-- [ ] SVG to React conversion
-- [ ] Direct Penpot API integration
-- [ ] Component library/templates
-- [ ] Collaboration features
-- [ ] Figma plugin
-
----
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-## License
-
-[MIT](LICENSE) © 2026 AI Design to Code Contributors
-
----
-
-<p align="center">
-  Built with ❤️ using Next.js, Kimi AI, and Penpot
-</p>
+MIT
