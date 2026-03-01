@@ -1,0 +1,48 @@
+version: "3.5"
+
+services:
+  ai-design-to-code:
+    build:
+      context: ./my-app
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - KIMI_API_KEY=${KIMI_API_KEY}
+    restart: always
+    networks:
+      - ai-design-network
+
+  # Include Penpot services from penpot-docker/docker-compose.yml
+  penpot-frontend:
+    extends:
+      file: ./penpot-docker/docker-compose.yml
+      service: penpot-frontend
+
+  penpot-backend:
+    extends:
+      file: ./penpot-docker/docker-compose.yml
+      service: penpot-backend
+
+  penpot-exporter:
+    extends:
+      file: ./penpot-docker/docker-compose.yml
+      service: penpot-exporter
+
+  penpot-postgres:
+    extends:
+      file: ./penpot-docker/docker-compose.yml
+      service: penpot-postgres
+
+  penpot-redis:
+    extends:
+      file: ./penpot-docker/docker-compose.yml
+      service: penpot-redis
+
+networks:
+  ai-design-network:
+    driver: bridge
+
+volumes:
+  penpot_postgres_data:
+  penpot_assets_data:
