@@ -1,72 +1,166 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { verifyAuth, checkRateLimit, generateCodeSchema } from '@/lib/auth';
+import { logger, logRequest, logGeneration } from '@/lib/logger';
+import { AppError, ErrorCodes, handleError } from '@/lib/error-handler';
 
-const KIMI_API_KEY = process.env.KIMI_API_KEY || '';
-const KIMI_API_URL = 'https://api.moonshot.cn/v1/chat/completions';
+// Request schema with strict validation
+const requestSchema = generateCodeSchema.extend({
+  userId: z.string().optional(), // Will be set from auth
+});
 
-const SYSTEM_PROMPT = `You are an expert React/Next.js developer and UI designer.
-
-When given a design description, generate production-ready React code using:
-- Next.js 14+ (App Router)
-- React 18+ (Functional components with hooks)
-- Tailwind CSS for styling
-- TypeScript
-
-Output format:
-1. First, provide a brief design explanation (2-3 sentences)
-2. Then provide the complete code in a code block
-3. Use 'use client' directive if needed for client-side features
-4. Make the design responsive and modern
-5. Include proper TypeScript types
-
-The code should be a complete, runnable page component.
-`;
-
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    const { prompt } = await request.json();
-
-    if (!prompt) {
-      return NextResponse.json(
-        { error: 'Prompt is required' },
-        { status: 400 }
+    // Log request
+    logRequest(req, null);
+    
+    // 1. Authentication
+    const user = await verifyAuth(req);
+    if (!user) {
+      throw new AppError(401, 'Authentication required', ErrorCodes.AUTHENTICATION_ERROR);
+    }
+    
+    // 2. Rate limiting
+    const rateLimit = checkRateLimit(user.id, 50, 60 * 60 * 1000); // 50 requests/hour
+    if (!rateLimit.allowed) {
+      throw new AppError(
+        429, 
+        'Rate limit exceeded', 
+        ErrorCodes.RATE_LIMIT_ERROR,
+        { resetTime: rateLimit.resetTime }
       );
     }
-
-    const response = await fetch(KIMI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${KIMI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'kimi-k2-0711-preview',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `Create a Next.js page for: ${prompt}` }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-      }),
+    
+    // 3. Parse and validate body
+    const body = await req.json();
+    const validated = requestSchema.parse({ ...body, userId: user.id });
+    
+    // 4. Call AI service with retry logic
+    const code = await generateWithRetry(validated.prompt, validated);
+    
+    // 5. Log success
+    const duration = Date.now() - startTime;
+    logGeneration(user.id, validated.prompt, duration, true, {
+      framework: validated.framework,
+      styling: validated.styling
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Kimi API error:', error);
-      return NextResponse.json(
-        { error: 'Failed to generate code' },
-        { status: 500 }
-      );
-    }
-
-    const data = await response.json();
-    const generatedCode = data.choices[0]?.message?.content || '';
-
-    return NextResponse.json({ code: generatedCode });
-  } catch (error) {
-    console.error('Error:', error);
+    
+    // 6. Return response with rate limit headers
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      {
+        success: true,
+        data: {
+          code,
+          metadata: {
+            framework: validated.framework,
+            styling: validated.styling,
+            typescript: validated.typescript,
+            generatedAt: new Date().toISOString()
+          }
+        }
+      },
+      {
+        headers: {
+          'X-RateLimit-Limit': '50',
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+        }
+      }
     );
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logGeneration('unknown', '', duration, false, { error: (error as Error).message });
+    return handleError(error, req, null);
   }
+}
+
+// AI generation with retry logic
+async function generateWithRetry(
+  prompt: string, 
+  options: any,
+  maxRetries: number = 3
+): Promise<string> {
+  const apiKey = process.env.KIMI_API_KEY;
+  if (!apiKey) {
+    throw new AppError(500, 'AI service not configured', ErrorCodes.INTERNAL_ERROR);
+  }
+  
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'kimi-k2-0711-preview',
+          messages: [
+            {
+              role: 'system',
+              content: buildSystemPrompt(options)
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`AI API error: ${error}`);
+      }
+      
+      const data = await response.json();
+      return data.choices[0].message.content;
+      
+    } catch (error) {
+      lastError = error as Error;
+      logger.warn(`AI generation attempt ${attempt} failed`, { error: lastError.message });
+      
+      if (attempt < maxRetries) {
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  }
+  
+  throw new AppError(
+    503,
+    'AI generation failed after retries',
+    ErrorCodes.AI_GENERATION_ERROR,
+    { originalError: lastError?.message }
+  );
+}
+
+function buildSystemPrompt(options: any): string {
+  return `You are an expert ${options.framework} developer.
+Generate clean, production-ready code using ${options.styling} for styling.
+${options.typescript ? 'Use TypeScript with proper types.' : 'Use JavaScript.'}
+
+Requirements:
+- Follow best practices
+- Include error handling
+- Add proper comments
+- Make components reusable
+- Ensure accessibility`;
+}
+
+// Health check endpoint
+export async function GET() {
+  return NextResponse.json({
+    status: 'healthy',
+    service: 'ai-design-to-code',
+    version: '2.0.0',
+    timestamp: new Date().toISOString()
+  });
 }
