@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { verifyAuth, checkRateLimit, generateCodeSchema } from '@/lib/auth';
 import { logger, logRequest, logGeneration } from '@/lib/logger';
 import { AppError, ErrorCodes, handleError } from '@/lib/error-handler';
+import { getProvider, getDefaultModel, getApiKey, ProviderID } from '@/lib/ai-providers';
 
 // Request schema with strict validation
 const requestSchema = generateCodeSchema.extend({
@@ -16,14 +17,16 @@ export async function POST(req: NextRequest) {
     // Log request
     logRequest(req, null);
     
-    // 1. Authentication
-    const user = await verifyAuth(req);
-    if (!user) {
+    // 1. Authentication (skip if Supabase is not configured)
+    const supabaseConfigured = !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('placeholder');
+    const user = supabaseConfigured ? await verifyAuth(req) : null;
+    if (supabaseConfigured && !user) {
       throw new AppError(401, 'Authentication required', ErrorCodes.AUTHENTICATION_ERROR);
     }
-    
+
     // 2. Rate limiting
-    const rateLimit = checkRateLimit(user.id, 50, 60 * 60 * 1000); // 50 requests/hour
+    const userId = user?.id ?? 'guest';
+    const rateLimit = checkRateLimit(userId, 50, 60 * 60 * 1000); // 50 requests/hour
     if (!rateLimit.allowed) {
       throw new AppError(
         429, 
@@ -35,14 +38,20 @@ export async function POST(req: NextRequest) {
     
     // 3. Parse and validate body
     const body = await req.json();
-    const validated = requestSchema.parse({ ...body, userId: user.id });
+    const validated = requestSchema.parse({ ...body, userId: user?.id });
     
     // 4. Call AI service with retry logic
-    const code = await generateWithRetry(validated.prompt, validated);
-    
+    const code = await generateWithRetry(
+      validated.prompt,
+      validated,
+      validated.provider as ProviderID,
+      validated.model,
+      validated.apiKey,
+    );
+
     // 5. Log success
     const duration = Date.now() - startTime;
-    logGeneration(user.id, validated.prompt, duration, true, {
+    logGeneration(userId, validated.prompt, duration, true, {
       framework: validated.framework,
       styling: validated.styling
     });
@@ -51,12 +60,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
+        code,
         data: {
           code,
           metadata: {
             framework: validated.framework,
             styling: validated.styling,
             typescript: validated.typescript,
+            provider: validated.provider,
+            model: validated.model,
             generatedAt: new Date().toISOString()
           }
         }
@@ -79,80 +91,97 @@ export async function POST(req: NextRequest) {
 
 // AI generation with retry logic
 async function generateWithRetry(
-  prompt: string, 
+  prompt: string,
   options: any,
+  providerId: ProviderID = 'kimi',
+  modelId?: string,
+  clientApiKey?: string,
   maxRetries: number = 3
 ): Promise<string> {
-  const apiKey = process.env.KIMI_API_KEY;
-  if (!apiKey) {
-    throw new AppError(500, 'AI service not configured', ErrorCodes.INTERNAL_ERROR);
+  const provider = getProvider(providerId);
+  if (!provider) {
+    throw new AppError(400, `Unknown AI provider: ${providerId}`, ErrorCodes.INTERNAL_ERROR);
   }
-  
+
+  // Prefer key sent from client (browser localStorage), fall back to server env
+  const apiKey = clientApiKey?.trim() || getApiKey(provider);
+  if (!apiKey) {
+    throw new AppError(
+      500,
+      `No API key for "${provider.name}". Add it via the API Keys settings in the UI, or set ${provider.envKey} on the server.`,
+      ErrorCodes.INTERNAL_ERROR
+    );
+  }
+
+  const model = modelId
+    ? (provider.models.find((m) => m.id === modelId) ?? getDefaultModel(provider))
+    : getDefaultModel(provider);
+
   let lastError: Error | null = null;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+      const response = await fetch(provider.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'kimi-k2-0711-preview',
+          model: model.id,
           messages: [
-            {
-              role: 'system',
-              content: buildSystemPrompt(options)
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
+            { role: 'system', content: buildSystemPrompt(options) },
+            { role: 'user', content: prompt },
           ],
           temperature: 0.7,
-          max_tokens: 4000
-        })
+          max_tokens: model.maxTokens,
+        }),
       });
-      
+
       if (!response.ok) {
         const error = await response.text();
         throw new Error(`AI API error: ${error}`);
       }
-      
+
       const data = await response.json();
       return data.choices[0].message.content;
-      
+
     } catch (error) {
       lastError = error as Error;
-      logger.warn(`AI generation attempt ${attempt} failed`, { error: lastError.message });
-      
+      logger.warn(`AI generation attempt ${attempt} failed`, {
+        error: lastError.message,
+        provider: providerId,
+        model: model.id,
+      });
+
       if (attempt < maxRetries) {
         // Exponential backoff
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
     }
   }
-  
+
   throw new AppError(
     503,
     'AI generation failed after retries',
     ErrorCodes.AI_GENERATION_ERROR,
-    { originalError: lastError?.message }
+    { originalError: lastError?.message, provider: providerId, model: model.id }
   );
 }
 
 function buildSystemPrompt(options: any): string {
-  return `You are an expert ${options.framework} developer.
-Generate clean, production-ready code using ${options.styling} for styling.
-${options.typescript ? 'Use TypeScript with proper types.' : 'Use JavaScript.'}
+  return `You are an expert ${options.framework} developer. Your task is to generate a single self-contained React component.
 
-Requirements:
-- Follow best practices
-- Include error handling
-- Add proper comments
-- Make components reusable
-- Ensure accessibility`;
+RULES (must follow strictly):
+- Output ONLY a single fenced code block: \`\`\`tsx ... \`\`\`
+- NO explanations, NO markdown text, NO installation instructions outside the code block
+- The component must be the default export
+- Use ${options.styling} for all styling
+${options.typescript ? '- Use TypeScript with proper types' : '- Use JavaScript'}
+- Include all necessary imports at the top
+- Do NOT import external packages unavailable in a standard React sandbox (no next/image, no next/link, no react-router)
+- Use only: react, lucide-react, and inline ${options.styling} classes/styles
+- The component must be fully functional and render without errors`;
 }
 
 // Health check endpoint

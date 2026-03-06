@@ -9,6 +9,27 @@ import { Sandpack } from '@codesandbox/sandpack-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Download, Copy, Play, FileCode, Eye } from 'lucide-react';
+import SettingsModal, { getKeyForProvider } from '@/components/SettingsModal';
+
+// Provider & model options (client-side config)
+const PROVIDER_MODELS = {
+  kimi: {
+    name: 'Kimi (Moonshot)',
+    models: [
+      { id: 'kimi-k2-0711-preview', name: 'Kimi K2' },
+      { id: 'moonshot-v1-8k',       name: 'Moonshot v1 8K' },
+      { id: 'moonshot-v1-32k',      name: 'Moonshot v1 32K' },
+    ],
+  },
+  openai: {
+    name: 'OpenAI',
+    models: [
+      { id: 'gpt-4o',      name: 'GPT-4o' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+    ],
+  },
+} as const;
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -16,6 +37,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('code');
+  const [provider, setProvider] = useState<keyof typeof PROVIDER_MODELS>('kimi');
+  const [model, setModel] = useState('kimi-k2-0711-preview');
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -24,22 +47,31 @@ export default function Home() {
     setError('');
     
     try {
-      const response = await fetch('/api/generate', {
+      const apiKey = getKeyForProvider(provider);
+      const basePath = process.env.NEXT_PUBLIC_ASSET_PREFIX ?? '';
+      const response = await fetch(`${basePath}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, provider, model, apiKey: apiKey || undefined }),
       });
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        setError(data.error);
+
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setError(`Server error: ${text.slice(0, 200)}`);
+        return;
+      }
+
+      if (!response.ok || data.error) {
+        setError(data.error?.message ?? data.error ?? `HTTP ${response.status}`);
       } else {
-        setCode(data.code);
+        setCode(data.code ?? data.data?.code ?? '');
         setActiveTab('preview');
       }
     } catch (err) {
-      setError('Failed to generate code. Please try again.');
+      setError(`Error: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -66,8 +98,16 @@ export default function Home() {
   }, [code]);
 
   const extractCodeBlock = (text: string) => {
-    const match = text.match(/```(?:tsx?|jsx?)?\n([\s\S]*?)```/);
-    return match ? match[1] : text;
+    // Find all code blocks and pick the largest one
+    const matches = [...text.matchAll(/```(?:tsx?|jsx?)?\n([\s\S]*?)```/g)];
+    if (matches.length > 0) {
+      return matches.reduce((a, b) => (a[1].length >= b[1].length ? a : b))[1];
+    }
+    // If no code block markers, check if it looks like raw code
+    if (text.trim().startsWith('import') || text.trim().startsWith('export') || text.trim().startsWith('function')) {
+      return text.trim();
+    }
+    return text;
   };
 
   const cleanCode = extractCodeBlock(code);
@@ -98,6 +138,9 @@ root.render(
           <p className="text-slate-400 text-lg">
             Describe your design, get production-ready Next.js code
           </p>
+          <div className="mt-3 flex justify-center">
+            <SettingsModal />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -116,7 +159,39 @@ root.render(
                 onChange={(e) => setPrompt(e.target.value)}
                 className="min-h-[180px] bg-slate-900 border-slate-600 text-white placeholder:text-slate-500 resize-none"
               />
-              
+
+              {/* Provider & Model selector */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-slate-400 text-xs mb-1 block">Provider</label>
+                  <select
+                    value={provider}
+                    onChange={(e) => {
+                      const p = e.target.value as keyof typeof PROVIDER_MODELS;
+                      setProvider(p);
+                      setModel(PROVIDER_MODELS[p].models[0].id);
+                    }}
+                    className="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {Object.entries(PROVIDER_MODELS).map(([id, p]) => (
+                      <option key={id} value={id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-slate-400 text-xs mb-1 block">Model</label>
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {PROVIDER_MODELS[provider].models.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <Button 
                 onClick={handleGenerate}
                 disabled={loading || !prompt.trim()}
@@ -211,12 +286,22 @@ root.render(
                       <Sandpack
                         template="react-ts"
                         files={sandpackFiles}
+                        customSetup={{
+                          dependencies: {
+                            'lucide-react': 'latest',
+                            'class-variance-authority': 'latest',
+                            'clsx': 'latest',
+                          },
+                        }}
                         options={{
                           showNavigator: false,
                           showLineNumbers: true,
                           showInlineErrors: true,
                           wrapContent: true,
                           editorHeight: 450,
+                          externalResources: [
+                            'https://cdn.tailwindcss.com',
+                          ],
                         }}
                         theme="dark"
                       />
@@ -251,7 +336,7 @@ root.render(
 
         {/* Footer */}
         <div className="mt-8 text-center text-slate-500 text-sm">
-          <p>Powered by Kimi AI + Next.js + Sandpack</p>
+          <p>Powered by {PROVIDER_MODELS[provider].name} ({model}) + Next.js + Sandpack</p>
         </div>
       </div>
     </main>

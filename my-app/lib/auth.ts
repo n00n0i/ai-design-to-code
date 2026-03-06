@@ -65,6 +65,9 @@ export const generateCodeSchema = z.object({
   framework: z.enum(['nextjs', 'react', 'vue', 'svelte']).default('nextjs'),
   styling: z.enum(['tailwind', 'css-modules', 'styled-components']).default('tailwind'),
   typescript: z.boolean().default(true),
+  provider: z.enum(['kimi', 'openai']).default('kimi'),
+  model: z.string().optional(),
+  apiKey: z.string().optional(), // client-provided key (from browser localStorage)
 });
 
 export type GenerateCodeInput = z.infer<typeof generateCodeSchema>;
